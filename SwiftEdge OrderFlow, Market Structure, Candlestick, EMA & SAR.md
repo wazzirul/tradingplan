@@ -63,9 +63,10 @@ Berikut adalah rincian bagaimana setiap pola candlestick ditandai pada grafik un
 - **Doji**: Lingkaran **abu-abu** di atas candle.
 - **Inverted Hammer**: Segitiga ke bawah berwarna **hijau limau transparan** di atas candle.
 
-### 4. EMA 4 & EMA 50
-- EMA 4 (cepat) dan EMA 50 (lambat) digambarkan.
-- Logika persilangan (cross) bullish/bearish untuk menghasilkan sinyal.
+### 4. EMA Cross (4/50)
+- Menampilkan **EMA 4** (garis hijau) dan **EMA 50** (garis putih).
+- Ketika EMA 4 dan EMA 50 bersilangan, sebuah tanda silang (**kuning**) akan muncul pada titik persilangan di grafik.
+- Teks "**4/50 X**" juga akan ditampilkan di bagian bawah grafik untuk menandakan terjadinya persilangan.
 
 ### 5. Parabolic SAR
 - Menggambarkan titik-titik SAR untuk mengikuti tren.
