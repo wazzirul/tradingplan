@@ -4,7 +4,7 @@
 // merge with GPT-4.1 - wazirul
 
 //@version=6
-indicator('Volumatic VIDYA + OrderFlow Sentiment SwiftEdge', 'VIDYA+OrderFlow Sentiment', overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator('Volumatic VIDYA + SMA + OrderFlow Sentiment SwiftEdge', 'VIDYA+SMA+OrderFlow Sentiment', overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 
 // ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
@@ -17,6 +17,14 @@ int pivot_left_bars = 3 // Left side pivot bars
 int pivot_right_bars = pivot_left_bars // Right side pivot bars
 
 float source = input.source(close, 'Source') // Source for VIDYA calculation
+
+// SMA Settings
+bool show_sma = input.bool(true, 'Show SMA', group = 'SMA')
+int sma_length = input.int(8, 'SMA Length', minval = 1, group = 'SMA')
+string sma_timeframe = input.timeframe('1H', 'SMA Timeframe', group = 'SMA')
+int sma_smoothing = input.int(8, 'SMA Smoothing', minval = 1, maxval = 20, group = 'SMA')
+color sma_color = input(color.white, 'SMA Color', group = 'SMA')
+int sma_linewidth = input.int(2, 'SMA Line Width', minval = 1, maxval = 5, group = 'SMA')
 
 // Define colors for up and down trends
 color up_trend_color = input(#17dfad, '+', group = 'Color', inline = 'c') // Color for uptrend
@@ -175,6 +183,10 @@ float atr_value = ta.atr(200) // ATR calculation with length of 200
 // Calculate the VIDYA (Variable Index Dynamic Average)
 vidya_value = vidya_calc(source, vidya_length, vidya_momentum)
 
+// Calculate SMA with timeframe and smoothing
+float sma_raw = request.security(syminfo.tickerid, sma_timeframe, ta.sma(source, sma_length), lookahead = barmerge.lookahead_off)
+float sma_value = ta.sma(sma_raw, sma_smoothing)
+
 // Calculate upper and lower bands based on VIDYA and ATR
 float upper_band = vidya_value + atr_value * band_distance
 float lower_band = vidya_value - atr_value * band_distance
@@ -268,4 +280,7 @@ fill(p1, p2, smoothed_value, hl2, color.new(trend_color, shadow ? 80 : 100), na)
 plotshape(series = trend_cross_up[1] ? smoothed_value[0] : na, title = 'Trend Up', style = shape.labelup, location = location.absolute, color = color.new(up_trend_color, 50), text = '▲', textcolor = chart.fg_color)
 
 plotshape(series = trend_cross_down[1] ? smoothed_value[0] : na, title = 'Trend Down', style = shape.labeldown, location = location.absolute, color = color.new(down_trend_color, 50), text = '▼', textcolor = chart.fg_color)
+
+// Plot SMA line
+plot(show_sma ? sma_value : na, title = 'SMA', color = sma_color, linewidth = sma_linewidth)
 // }
