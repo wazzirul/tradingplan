@@ -19,7 +19,7 @@ Tujuan: Menemukan sinyal entry/exit yang valid, bukan sekadar pola acak.
 
 #additional#
 4. Analisa Indikator OrderFlow [Probabilities] | Fractalyst >>> baca line 67
-5. Analisa Indikator SwiftEdge OrderFlow, Market Structure, Candlestick, EMA & SAR.md >>> baca line 90
+5. Analisa Indikator Volumatic VIDYA + OrderFlow Sentiment SwiftEdge >>> baca line 90
 
 Catatan Penting:
 Analisa boleh lama dalam menjawab, utamakan kualitas dan kedalaman insight.
@@ -87,68 +87,33 @@ Tunggu gambar chart trading terbaru dari saya, lalu jawab sesuai format di atas 
 
 
 
-**SwiftEdge OrderFlow, Struktur Pasar, Candlestick, EMA & SAR** adalah indikator Pine Script komprehensif untuk TradingView yang menggabungkan:
-1. Visualisasi Orderflow & sentimen (tabel)
-2. Struktur pasar (Higher High, Lower Low)
-3. Pengenalan berbagai pola candlestick
-4. EMA 4 & EMA 50
-5. Parabolic SAR
+# Indikator Volumatic VIDYA + OrderFlow Sentiment SwiftEdge
 
-## Fitur Utama
+## 1. Deskripsi
+Indikator ini menggabungkan algoritma Variable Index Dynamic Average (VIDYA) dengan analisis OrderFlow dan Sentiment berbasis SwiftEdge. Tujuannya adalah memberikan gambaran tren harga, zona likuiditas, serta sentimen pasar secara visual dan interaktif pada chart trading.
 
-### 1. Visualisasi Orderflow & Sentimen (Tabel)
-- Membagi harga menjadi 10 rentang/zona per bar.
-- Menghitung volume beli/jual dan sentimen untuk setiap rentang.
-- Menampilkan tabel (kanan atas/tengah/bawah) dengan:
-  - Harga, Volume Beli, Volume Jual, Volume Total
-  - Menyorot rentang harga saat ini
-  - Bar sentimen (% Beli / % Jual)
+## 2. Detail yang Ditampilkan
+- **VIDYA Trend Line**: Menampilkan garis tren dinamis berdasarkan pergerakan harga dan momentum, dengan warna berbeda untuk uptrend dan downtrend.
+- **Upper/Lower Bands**: Batas atas dan bawah berdasarkan VIDYA dan ATR (Average True Range) untuk mendeteksi breakout atau reversal.
+- **OrderFlow & Sentiment Table**: Tabel di chart yang menampilkan:
+  - Persentase sentimen beli/jual
+  - Total volume beli dan jual
+  - Distribusi volume pada 10 level harga (orderbook simulasi)
+  - Highlight pada level harga saat ini
+- **Zona Likuiditas**: Garis horizontal pada pivot high/low yang menandai area support/resistance penting, lengkap dengan label volume.
+- **Delta Volume**: Statistik perbandingan volume tren naik dan turun.
+- **Marker Trend Change**: Tanda panah pada chart saat terjadi perubahan tren.
 
-### 2. Struktur Pasar
-- Mendeteksi dan menandai Higher Highs (segitiga biru ke atas) dan Lower Lows (segitiga oranye ke bawah).
+## 3. Manfaat & Panduan Penggunaan untuk Trader
+- **Entry**: 
+  - Entry buy saat harga menembus upper band VIDYA dan sentimen didominasi volume beli (>50%).
+  - Entry sell saat harga menembus lower band VIDYA dan sentimen didominasi volume jual (>50%).
+  - Konfirmasi tambahan jika harga mendekati zona likuiditas (support/resistance) dan terjadi perubahan sentimen.
+- **Stop Loss (SL)**:
+  - Letakkan SL di bawah zona support (untuk buy) atau di atas zona resistance (untuk sell) yang ditandai oleh garis likuiditas.
+  - Alternatif: gunakan band VIDYA sebagai acuan SL dinamis.
+- **Take Profit (TP)**:
+  - TP dapat ditempatkan pada zona likuiditas berikutnya atau saat sentimen mulai berbalik arah.
+  - Perhatikan perubahan delta volume dan marker trend change sebagai sinyal exit.
 
-### 3. Pengenalan Berbagai Pola Candlestick
-- Mengenali dan menandai:
-  - Bullish/Bearish Engulfing
-  - Hammer, Inverted Hammer
-  - Shooting Star, Hanging Man
-  - Doji
-  - Morning/Evening Star
-  - Three White Soldiers/Black Crows
-  - Piercing Line, Dark Cloud Cover
-  - Tweezer Top/Bottom
-- Setiap pola digambarkan dengan warna/bentuk unik untuk kejelasan.
-
-### Penjelasan Pola Candlestick & Warnanya
-
-Berikut adalah rincian bagaimana setiap pola candlestick ditandai pada grafik untuk identifikasi yang mudah:
-
-#### Pola Bullish (Sinyal Potensi Kenaikan)
-- **Bullish Engulfing**: Label **hijau limau (lime)** di bawah candle.
-- **Hammer**: Segitiga ke atas berwarna **hijau limau transparan** di bawah candle.
-- **Morning Star**: Segitiga ke atas berwarna **hijau solid** di bawah candle.
-- **Three White Soldiers**: Segitiga ke atas berwarna **hijau solid** di bawah candle.
-- **Piercing Line**: Label **hijau limau (lime)** di bawah candle.
-- **Tweezer Bottom**: Segitiga ke atas berwarna **hijau limau (lime)** di bawah candle.
-
-#### Pola Bearish (Sinyal Potensi Penurunan)
-- **Bearish Engulfing**: Label **merah** di atas candle.
-- **Shooting Star**: Segitiga ke bawah berwarna **oranye** di atas candle.
-- **Hanging Man**: Segitiga ke atas berwarna **oranye transparan** di atas candle.
-- **Evening Star**: Segitiga ke bawah berwarna **merah solid** di atas candle.
-- **Three Black Crows**: Segitiga ke bawah berwarna **merah solid** di atas candle.
-- **Dark Cloud Cover**: Label **merah** di atas candle.
-- **Tweezer Top**: Segitiga ke bawah berwarna **merah solid** di atas candle.
-
-#### Pola Netral / Keraguan
-- **Doji**: Lingkaran **abu-abu** di atas candle.
-- **Inverted Hammer**: Segitiga ke bawah berwarna **hijau limau transparan** di atas candle.
-
-### 4. EMA Cross (4/50)
-- Menampilkan **EMA 4** (garis hijau) dan **EMA 50** (garis putih).
-- Ketika EMA 4 dan EMA 50 bersilangan, sebuah tanda silang (**kuning**) akan muncul pada titik persilangan di grafik.
-- Teks "**4/50 X**" juga akan ditampilkan di bagian bawah grafik untuk menandakan terjadinya persilangan.
-
-### 5. Parabolic SAR
-- Menggambarkan titik-titik SAR untuk mengikuti tren.
-- Parameter akselerasi yang dapat disesuaikan.
+Indikator ini membantu trader memahami kekuatan tren, area penting likuiditas, serta sentimen pasar secara real-time untuk pengambilan keputusan entry, SL, dan TP yang lebih presisi.
