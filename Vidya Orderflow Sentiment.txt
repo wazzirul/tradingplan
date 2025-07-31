@@ -1,0 +1,271 @@
+// This work is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International  
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © BigBeluga - SwiftEdge
+// merge with GPT-4.1 - wazirul
+
+//@version=6
+indicator('Volumatic VIDYA + OrderFlow Sentiment SwiftEdge', 'VIDYA+OrderFlow Sentiment', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+
+// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Input parameters for length, momentum, and source data
+int vidya_length = input.int(10, 'VIDYA Length') // Length of the VIDYA calculation
+int vidya_momentum = input.int(20, 'VIDYA Momentum') // Momentum length for VIDYA
+float band_distance = input.float(2, 'Distance factor for upper/lower bands', step = 0.1) // Distance factor for upper/lower bands
+// Define pivot parameters
+int pivot_left_bars = 3 // Left side pivot bars
+int pivot_right_bars = pivot_left_bars // Right side pivot bars
+
+float source = input.source(close, 'Source') // Source for VIDYA calculation
+
+// Define colors for up and down trends
+color up_trend_color = input(#17dfad, '+', group = 'Color', inline = 'c') // Color for uptrend
+color down_trend_color = input(#dd326b, '-', group = 'Color', inline = 'c') // Color for downtrend
+bool shadow = input.bool(true, 'Shadow', group = 'Color', inline = 'c')
+
+// Initialize variables for line, volume, and trend state
+var line pivot_line = na // Variable for storing line references
+var float volume_value = na // Variable for storing volume data
+float smoothed_value = na // Smoothing variable for VIDYA trend levels
+var bool is_trend_up = false // Boolean variable for tracking trend direction
+
+// Initialize arrays for storing line and volume information
+var array<line> liquidity_lines_low = array.new<line>(500) // Array for storing lines for lows
+var array<line> liquidity_lines_high = array.new<line>(500) // Array for storing lines for highs
+
+var float up_trend_volume = na // Volume accumulated during uptrend
+var float down_trend_volume = na // Volume accumulated during downtrend
+
+// }
+
+
+// --- OrderFlow & Sentiment SwiftEdge Integration --- {
+// Inputs for sentiment/orderflow
+
+// Use VIDYA color palette for orderflow table, but keep orange and blue harmonized
+posCol = up_trend_color
+negCol = down_trend_color
+orangeCol = color.new(color.orange, 0) // Keep orange for current price
+currentPriceCol = orangeCol
+neutralCol = color.new(color.gray, 0) // True neutral grey
+lot_scaling_factor = input.float(0.1, "Lot Scaling Factor (1 Volume = X Lots)", minval=0.01, maxval=1.0, step=0.01, group="OrderFlow & Sentiment")
+table_position = input.string("Top", "Table Position", options=["Top", "Middle", "Bottom"], group="OrderFlow & Sentiment")
+
+// Simulate orderbook data for current candlestick
+var float[] price_levels = array.new<float>(10, na)
+var float[] buy_volumes = array.new<float>(10, 0)
+var float[] sell_volumes = array.new<float>(10, 0)
+
+float bin_size = (high - low) / 10
+for i = 0 to 9
+    array.set(price_levels, i, low + bin_size * i + bin_size / 2)
+
+float price_change = close - open
+float base_weight = 0.0
+for i = 0 to 9
+    float level = array.get(price_levels, i)
+    float dist_to_open = math.abs(level - open) / (high - low)
+    float dist_to_close = math.abs(level - close) / (high - low)
+    float activity_weight = 1.0 - math.min(dist_to_open, dist_to_close)
+    if price_change > 0
+        base_weight := (level - low) / (high - low)
+    else if price_change < 0
+        base_weight := (high - level) / (high - low)
+    else
+        base_weight := 0.5
+    float variation = (math.random(0, 1) - 0.5) * 0.4
+    float adjusted_weight = math.min(math.max(base_weight + variation, 0.1), 0.9)
+    float scaled_volume = volume * lot_scaling_factor * 10000
+    float bin_volume = scaled_volume * activity_weight / 10
+    array.set(buy_volumes, i, bin_volume * adjusted_weight)
+    array.set(sell_volumes, i, bin_volume * (1 - adjusted_weight))
+
+float total_buy_volume = 0.0
+float total_sell_volume = 0.0
+for i = 0 to 9
+    total_buy_volume := total_buy_volume + array.get(buy_volumes, i)
+    total_sell_volume := total_sell_volume + array.get(sell_volumes, i)
+
+float total_volume = total_buy_volume + total_sell_volume
+float buy_sentiment = total_volume > 0 ? (total_buy_volume / total_volume) * 100 : 50.0
+float sell_sentiment = total_volume > 0 ? (total_sell_volume / total_volume) * 100 : 50.0
+color sentiment_color = buy_sentiment > sell_sentiment ? posCol : negCol
+
+// Find current price bin
+int current_price_bin = -1
+float min_distance = math.abs(close - array.get(price_levels, 0))
+for i = 0 to 9
+    float distance = math.abs(close - array.get(price_levels, i))
+    if distance < min_distance
+        min_distance := distance
+        current_price_bin := i
+
+// Create combined table for sentiment and orderbook data
+var table combined_table = switch table_position
+    "Top" => table.new(position.top_right, 3, 12, border_width=1)
+    "Middle" => table.new(position.middle_right, 3, 12, border_width=1)
+    "Bottom" => table.new(position.bottom_right, 3, 12, border_width=1)
+
+if barstate.isrealtime or barstate.islast
+    // Sentiment row (row 0)
+    table.cell(combined_table, 0, 0,"Sentiment: " + str.tostring(math.round(buy_sentiment, 1)) + "% Buy / " + str.tostring(math.round(sell_sentiment, 1)) + "% Sell", bgcolor=sentiment_color, text_color=color.white)
+    blueHeader = color.new(color.blue, 0)
+    table.cell(combined_table, 1, 0, "Total Buy: " + str.tostring(math.round(total_buy_volume)), bgcolor=blueHeader, text_color=color.white)
+    table.cell(combined_table, 2, 0, "Total Sell: " + str.tostring(math.round(total_sell_volume)), bgcolor=blueHeader, text_color=color.white)
+    table.cell(combined_table, 0, 1, "Price", bgcolor=blueHeader, text_color=color.white)
+    table.cell(combined_table, 1, 1, "Buy Volume", bgcolor=blueHeader, text_color=color.white)
+    table.cell(combined_table, 2, 1, "Sell Volume", bgcolor=blueHeader, text_color=color.white)
+    // Fill table with orderbook data, sorted from highest to lowest price
+    for i = 0 to 9
+        int row = 11 - i
+        float price = array.get(price_levels, i)
+        float buy_vol = array.get(buy_volumes, i)
+        float sell_vol = array.get(sell_volumes, i)
+        bool is_current_price = i == current_price_bin
+        color buy_bg = is_current_price ? orangeCol : (buy_vol > sell_vol ? up_trend_color : neutralCol)
+        color sell_bg = is_current_price ? orangeCol : (sell_vol > buy_vol ? down_trend_color : neutralCol)
+        color price_bg = is_current_price ? orangeCol : neutralCol
+        table.cell(combined_table, 0, row, str.tostring(math.round(price, 0), "#"), bgcolor=price_bg, text_color=color.white)
+        table.cell(combined_table, 1, row, str.tostring(int(buy_vol)), bgcolor=buy_bg, text_color=color.white)
+        table.cell(combined_table, 2, row, str.tostring(int(sell_vol)), bgcolor=sell_bg, text_color=color.white)
+// }
+
+
+// ＦＵＮＣＴＩＯＮＳ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// Define VIDYA (Variable Index Dynamic Average) function
+vidya_calc(src, vidya_length, vidya_momentum) =>
+    float momentum = ta.change(src)
+    float sum_pos_momentum = math.sum(momentum >= 0 ? momentum : 0.0, vidya_momentum)
+    float sum_neg_momentum = math.sum(momentum >= 0 ? 0.0 : -momentum, vidya_momentum)
+    float abs_cmo = math.abs(100 * (sum_pos_momentum - sum_neg_momentum) / (sum_pos_momentum + sum_neg_momentum))
+    float alpha = 2 / (vidya_length + 1)
+    var float vidya_value = 0.0
+    vidya_value := alpha * abs_cmo / 100 * src + (1 - alpha * abs_cmo / 100) * nz(vidya_value[1])
+
+    ta.sma(vidya_value, 15)
+
+// Method to extend lines and add labels for liquidity levels
+method extend_liquidity_lines(array<line> line_array, float price_level, bool is_cross, volume_val) =>
+    if line_array.size() > 0 and last_bar_index - bar_index < 5000
+        for i = 0 to line_array.size() - 1 by 1
+            if i < line_array.size()
+                line liquidity_line = line_array.get(i)
+                float current_line_level = line.get_y2(liquidity_line)
+                bool price_cross = is_cross ? price_level < current_line_level and price_level[1] >= current_line_level : price_level > current_line_level and price_level[1] <= current_line_level
+
+                bool is_short_line = bar_index - line.get_x1(liquidity_line) < 50
+
+                if price_cross and is_short_line
+                    line.set_x2(liquidity_line, bar_index)
+                    line_array.remove(i)
+
+                    // Add volume label to the liquidity zone
+                    label.new(bar_index - 1, price_level[1], str.tostring(volume_val, format.volume), color = color.rgb(0, 0, 0, 99), style = is_cross ? label.style_label_lower_left : label.style_label_upper_left, textcolor = chart.fg_color, size = size.small)
+
+                    // Add a circle label to represent liquidity zone
+                    label.new(bar_index - 1, price_level[1], text = '◉', color = #00000003, textcolor = is_cross ? down_trend_color : up_trend_color, style = label.style_label_center, size = size.normal)
+                    // }
+
+
+// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Calculate the Average True Range (ATR)
+float atr_value = ta.atr(200) // ATR calculation with length of 200
+
+// Calculate the VIDYA (Variable Index Dynamic Average)
+vidya_value = vidya_calc(source, vidya_length, vidya_momentum)
+
+// Calculate upper and lower bands based on VIDYA and ATR
+float upper_band = vidya_value + atr_value * band_distance
+float lower_band = vidya_value - atr_value * band_distance
+
+// Detect trend direction using crossovers of source with bands
+if ta.crossover(source, upper_band)
+    is_trend_up := true
+    is_trend_up
+if ta.crossunder(source, lower_band)
+    is_trend_up := false
+    is_trend_up
+
+// Set trend-based smoothing variable
+if is_trend_up
+    smoothed_value := lower_band
+    smoothed_value
+if not is_trend_up
+    smoothed_value := upper_band
+    smoothed_value
+if ta.change(is_trend_up)
+    smoothed_value := na
+    smoothed_value
+
+// Calculate pivot highs and lows for price action
+bool pivot_high = not na(ta.pivothigh(pivot_left_bars, pivot_right_bars))
+bool pivot_low = not na(ta.pivotlow(close, pivot_left_bars, pivot_right_bars))
+
+// Create and store lines for pivot lows (support zones)
+if low[pivot_right_bars] > smoothed_value and pivot_low
+    pivot_line := line.new(bar_index[pivot_right_bars], low[pivot_right_bars], bar_index[pivot_right_bars] + 5, low[pivot_right_bars], color = color.new(up_trend_color, 50))
+
+    liquidity_lines_low.push(pivot_line)
+    volume_value := math.sum(volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+    volume_value
+
+// Create and store lines for pivot highs (resistance zones)
+if high[pivot_right_bars] < smoothed_value and pivot_high
+    pivot_line := line.new(bar_index[pivot_right_bars], high[pivot_right_bars], bar_index[pivot_right_bars] + 5, high[pivot_right_bars], color = color.new(down_trend_color, 50))
+
+    liquidity_lines_high.push(pivot_line)
+    volume_value := math.sum(-volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+    volume_value
+
+// Extend lines to track price movements
+liquidity_lines_high.extend_liquidity_lines(smoothed_value, true, volume_value)
+liquidity_lines_low.extend_liquidity_lines(smoothed_value, false, volume_value)
+
+// Detect changes in the trend direction
+bool trend_cross_up = not is_trend_up[1] and is_trend_up
+bool trend_cross_down = not is_trend_up and is_trend_up[1]
+
+// Reset volume counters when trend changes
+if ta.change(trend_cross_up) or ta.change(trend_cross_down)
+    up_trend_volume := 0
+    down_trend_volume := 0
+    down_trend_volume
+
+// Accumulate volume during trends
+if not(ta.change(trend_cross_up) or ta.change(trend_cross_down))
+    up_trend_volume := up_trend_volume + (close > open ? volume : 0)
+    down_trend_volume := down_trend_volume + (close < open ? volume : 0)
+    down_trend_volume
+
+// Calculate average volume
+float avg_volume_delta = (up_trend_volume + down_trend_volume) / 2
+
+// Determine the color of the trend
+color trend_color = is_trend_up ? up_trend_color : not is_trend_up ? down_trend_color : chart.fg_color
+
+// Calculate delta volume percentage
+string delta_volume = str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent) == 'NaN%' ? '0%' : str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent)
+
+// }
+
+
+// ＰＬＯＴ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Display labels for volume and trend statistics on the last bar
+if barstate.islast
+    label.delete(label.new(bar_index, smoothed_value, 'Buy: ' + str.tostring(up_trend_volume, format.volume) + '\n Sell: ' + str.tostring(down_trend_volume, format.volume) + '\nDelta Volume: ' + delta_volume, color = color.new(trend_color, 90), style = is_trend_up ? label.style_label_upper_left : label.style_label_lower_left, textcolor = chart.fg_color)[1])
+
+    label.delete(label.new(bar_index, smoothed_value, text = '✪', color = #00000003, textcolor = trend_color, style = label.style_label_center, size = size.large)[1])
+
+// Plot the VIDYA trend line
+p1 = plot(smoothed_value, color = trend_color, linewidth = 2, style = plot.style_linebr)
+p2 = plot(hl2, display = display.none)
+
+// Fill between the plot and the VIDYA line
+fill(p1, p2, smoothed_value, hl2, color.new(trend_color, shadow ? 80 : 100), na)
+
+// Plot trend change markers (up and down arrows)
+plotshape(series = trend_cross_up[1] ? smoothed_value[0] : na, title = 'Trend Up', style = shape.labelup, location = location.absolute, color = color.new(up_trend_color, 50), text = '▲', textcolor = chart.fg_color)
+
+plotshape(series = trend_cross_down[1] ? smoothed_value[0] : na, title = 'Trend Down', style = shape.labeldown, location = location.absolute, color = color.new(down_trend_color, 50), text = '▼', textcolor = chart.fg_color)
+// }
