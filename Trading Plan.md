@@ -96,99 +96,7 @@ Setelah saya mengirimkan gambar chart trading terbaru, lakukan analisa mendalam 
 
    Tujuan: Timing entry/exit yang presisi (15-25% WR contribution)
 
-#additional#
-
-4. Analisa Indikator OrderFlow [Probabilities] | Fractalyst (10% bobot WR Probability)
-   **Premium/Discount Zone Analysis:**
-
-   - Identifikasi area Premium (hijau): Zone dimana harga "mahal" untuk buy
-   - Identifikasi area Discount (merah): Zone dimana harga "murah" untuk buy
-   - Current Price Position: Apakah harga di premium, discount, atau equilibrium
-   - Zone Strength: Berapa kali zona telah ditest sebelumnya
-
-   **Fractal Pattern Recognition:**
-
-   - Bullish Fractal: 5-bar pattern dengan middle bar sebagai lowest low
-   - Bearish Fractal: 5-bar pattern dengan middle bar sebagai highest high
-   - Fractal Break: Ketika harga break dari fractal level (signal continuation)
-   - Fractal Hold: Ketika harga respect fractal level (signal reversal)
-
-   **Probability Reading:**
-
-   - Persentase probabilitas ke Premium: Catat angka eksak yang ditampilkan
-   - Persentase probabilitas ke Discount: Catat angka eksak yang ditampilkan
-   - Historical Success Rate: Akurasi prediksi indikator di timeframe ini
-   - Confluence dengan level struktur: Premium/discount zone bertepatan dengan S/R
-
-   **Risk Assessment:**
-
-   - High Probability Setup (>70%): Entry dengan confidence tinggi
-   - Medium Probability Setup (50-70%): Entry dengan size kecil atau wait konfirmasi
-   - Low Probability Setup (<50%): Avoid entry, tunggu setup yang lebih baik
-
-5. Analisa Indikator Vidya Orderflow Sentiment (5% bobot WR Probability)
-   **VIDYA Moving Average Analysis:**
-
-   - VIDYA Slope: Rising (bullish), Falling (bearish), Flat (ranging)
-   - Price vs VIDYA: Above VIDYA = bullish bias, Below VIDYA = bearish bias
-   - VIDYA Color: Hijau = uptrend, Merah = downtrend, Abu-abu = sideways
-   - Dynamic Support/Resistance: VIDYA bertindak sebagai dynamic S/R
-
-   **OrderFlow Sentiment Table Analysis:**
-
-   - Total Buy Volume: Angka volume pembelian agregat
-   - Total Sell Volume: Angka volume penjualan agregat
-   - Buy/Sell Ratio: Perbandingan volume buy vs sell
-   - Sentiment Percentage: % Buy vs % Sell yang ditampilkan di header
-   - Price Level Distribution: Volume di setiap level harga (3339, 3338, dll)
-
-   **Volume Delta Analysis:**
-
-   - Positive Delta: Lebih banyak volume buy = bullish pressure
-   - Negative Delta: Lebih banyak volume sell = bearish pressure
-   - Delta Divergence: Volume dan harga bergerak berlawanan arah
-   - Accumulation/Distribution: Pattern volume yang menunjukkan smart money activity
-
-   **Trend Confirmation:**
-
-   - Volume Surge: Lonjakan volume yang mengkonfirmasi breakout/breakdown
-   - Volume Drying Up: Penurunan volume menjelang reversal
-   - Institutional Flow: Pattern volume yang menunjukkan pergerakan institusional
-
-   **Sentiment Conflict Resolution:**
-
-   - Price Action vs Sentiment: Ketika harga dan sentiment tidak sinkron
-   - Smart Money vs Retail: Identifikasi apakah pergerakan dari institusi atau retail
-   - False Signal Filter: Menggunakan volume untuk filter signal palsu
-
-6. Analisa Volume & Momentum (Tambahan untuk akurasi)
-   **Volume Analysis:**
-
-   - Volume Spike: Volume 2x lebih tinggi dari rata-rata = signal kuat
-   - Volume Confirmation: Volume tinggi pada breakout/breakdown
-   - Volume Divergence: Harga naik tapi volume turun (bearish divergence)
-   - Volume Profile: Distribusi volume di level harga tertentu
-
-   **Momentum Indicators (jika terlihat di chart):**
-
-   - RSI: >70 overbought, <30 oversold, 50 sebagai bias line
-   - MACD: Signal line crossover, histogram expansion/contraction
-   - Stochastic: %K dan %D crossover di extreme level
-
-7. Analisa Time & Volatility
-   **Market Session Analysis:**
-
-   - Asian Session: Lower volatility, range-bound movement
-   - London Session: High volatility, trend initiation
-   - New York Session: Highest volatility, trend continuation/reversal
-   - Session Overlap: Highest volatility period
-
-   **News & Economic Events:**
-
-   - High Impact News: NFP, Fed Rate Decision, Inflation data
-   - Medium Impact: GDP, Unemployment, PMI data
-   - Central Bank Speeches: Hawkish/Dovish tone
-   - Geopolitical Events: Risk-on/Risk-off sentiment
+#additional# 4. Analisa Indikator OrderFlow [Probabilities] | Fractalyst >>> baca line 67 5. Analisa Indikator SwiftEdge OrderFlow, Market Structure, Candlestick, EMA & SAR.md >>> baca line 90
 
 Catatan Penting:
 Analisa boleh lama dalam menjawab, utamakan kualitas dan kedalaman insight.
@@ -509,39 +417,77 @@ Tunggu gambar chart trading terbaru dari saya, lalu jawab sesuai format di atas 
 - Memudahkan analisa order flow tanpa perlu membaca order book secara manual.
 - Cocok untuk berbagai gaya trading: scalping, intraday, swing.
 
-# Dokumentasi: Vidya Orderflow Sentiment
+**SwiftEdge OrderFlow, Struktur Pasar, Candlestick, EMA & SAR** adalah indikator Pine Script komprehensif untuk TradingView yang menggabungkan:
 
-## 1. Deskripsi
+1. Visualisasi Orderflow & sentimen (tabel)
+2. Struktur pasar (Higher High, Lower Low)
+3. Pengenalan berbagai pola candlestick
+4. EMA 4 & EMA 50
+5. Parabolic SAR
 
-Script ini merupakan indikator gabungan berbasis Pine Script (TradingView) yang mengombinasikan VIDYA (Variable Index Dynamic Average) dengan analisis OrderFlow dan Sentimen pasar. Indikator ini dirancang untuk membantu trader memahami arah tren, kekuatan volume, serta distribusi order di sekitar harga saat ini, sehingga dapat meningkatkan akurasi pengambilan keputusan trading.
+## Fitur Utama
 
-## 2. Indikator yang Digunakan
+### 1. Visualisasi Orderflow & Sentimen (Tabel)
 
-- **VIDYA (Variable Index Dynamic Average):** Moving average adaptif yang menyesuaikan sensitivitasnya berdasarkan volatilitas dan momentum harga.
-- **OrderFlow & Sentiment Table:** Simulasi distribusi volume beli/jual pada 10 level harga di setiap candle, menampilkan sentimen dominan (Buy/Sell) dan total volume.
-- **ATR (Average True Range):** Digunakan untuk menentukan band atas/bawah sebagai zona breakout atau reversal.
-- **Pivot High/Low:** Deteksi titik support/resistance dinamis berdasarkan pola harga lokal.
-- **Trend Marker:** Penanda perubahan tren dengan panah naik/turun pada chart.
-- **Volume Delta:** Akumulasi volume selama tren naik/turun untuk mengukur kekuatan buyer/seller.
+- Membagi harga menjadi 10 rentang/zona per bar.
+- Menghitung volume beli/jual dan sentimen untuk setiap rentang.
+- Menampilkan tabel (kanan atas/tengah/bawah) dengan:
+  - Harga, Volume Beli, Volume Jual, Volume Total
+  - Menyorot rentang harga saat ini
+  - Bar sentimen (% Beli / % Jual)
 
-## 3. Manfaat Indikator
+### 2. Struktur Pasar
 
-- **Identifikasi Tren Dinamis:** VIDYA memberikan sinyal tren yang lebih responsif terhadap perubahan volatilitas dibanding MA konvensional.
-- **Visualisasi Sentimen OrderFlow:** Tabel orderbook membantu melihat distribusi volume dan sentimen dominan pada setiap level harga.
-- **Deteksi Zona Likuiditas:** Pivot dan garis likuiditas menandai area support/resistance potensial yang sering menjadi titik reaksi harga.
-- **Konfirmasi Breakout/Reversal:** Band ATR dan marker tren membantu mengidentifikasi peluang breakout atau potensi pembalikan arah.
-- **Analisis Kekuatan Volume:** Volume delta memperlihatkan dominasi buyer/seller selama tren berlangsung.
+- Mendeteksi dan menandai Higher Highs (segitiga biru ke atas) dan Lower Lows (segitiga oranye ke bawah).
 
-## 4. Kegunaan untuk Trader (Entry, Sell, TP)
+### 3. Pengenalan Berbagai Pola Candlestick
 
-- **Entry (Buy/Sell):**
-  - Entry buy dapat dipertimbangkan saat harga menembus band atas VIDYA dengan sentimen orderflow dominan beli dan volume delta positif.
-  - Entry sell dipertimbangkan saat harga breakdown band bawah VIDYA dengan sentimen dominan jual dan volume delta negatif.
-- **Konfirmasi & Filter:**
-  - Gunakan marker panah (▲/▼) sebagai konfirmasi perubahan tren.
-  - Perhatikan zona likuiditas (pivot/garis) sebagai area validasi entry atau potensi rejection.
-- **Take Profit (TP):**
-  - TP dapat ditempatkan di zona resistance/support berikutnya (pivot high/low) atau saat sentimen orderflow mulai berbalik.
-  - Pantau perubahan volume delta dan sentimen untuk mengantisipasi potensi reversal.
+- Mengenali dan menandai:
+  - Bullish/Bearish Engulfing
+  - Hammer, Inverted Hammer
+  - Shooting Star, Hanging Man
+  - Doji
+  - Morning/Evening Star
+  - Three White Soldiers/Black Crows
+  - Piercing Line, Dark Cloud Cover
+  - Tweezer Top/Bottom
+- Setiap pola digambarkan dengan warna/bentuk unik untuk kejelasan.
 
-Indikator ini sangat membantu trader dalam membaca kekuatan tren, distribusi volume, dan sentimen pasar secara visual dan terstruktur, sehingga keputusan entry, exit, dan TP menjadi lebih objektif dan berbasis data.
+### Penjelasan Pola Candlestick & Warnanya
+
+Berikut adalah rincian bagaimana setiap pola candlestick ditandai pada grafik untuk identifikasi yang mudah:
+
+#### Pola Bullish (Sinyal Potensi Kenaikan)
+
+- **Bullish Engulfing**: Label **hijau limau (lime)** di bawah candle.
+- **Hammer**: Segitiga ke atas berwarna **hijau limau transparan** di bawah candle.
+- **Morning Star**: Segitiga ke atas berwarna **hijau solid** di bawah candle.
+- **Three White Soldiers**: Segitiga ke atas berwarna **hijau solid** di bawah candle.
+- **Piercing Line**: Label **hijau limau (lime)** di bawah candle.
+- **Tweezer Bottom**: Segitiga ke atas berwarna **hijau limau (lime)** di bawah candle.
+
+#### Pola Bearish (Sinyal Potensi Penurunan)
+
+- **Bearish Engulfing**: Label **merah** di atas candle.
+- **Shooting Star**: Segitiga ke bawah berwarna **oranye** di atas candle.
+- **Hanging Man**: Segitiga ke atas berwarna **oranye transparan** di atas candle.
+- **Evening Star**: Segitiga ke bawah berwarna **merah solid** di atas candle.
+- **Three Black Crows**: Segitiga ke bawah berwarna **merah solid** di atas candle.
+- **Dark Cloud Cover**: Label **merah** di atas candle.
+- **Tweezer Top**: Segitiga ke bawah berwarna **merah solid** di atas candle.
+
+#### Pola Netral / Keraguan
+
+- **Doji**: Lingkaran **abu-abu** di atas candle.
+- **Inverted Hammer**: Segitiga ke bawah berwarna **hijau limau transparan** di atas candle.
+
+### 4. EMA Cross (4/50)
+
+- Menampilkan **EMA 4** (garis hijau) dan **EMA 50** (garis putih).
+- Ketika EMA 4 dan EMA 50 bersilangan, sebuah tanda silang (**kuning**) akan muncul pada titik persilangan di grafik.
+- Teks "**4/50 X**" juga akan ditampilkan di bagian bawah grafik untuk menandakan terjadinya persilangan.
+
+### 5. Parabolic SAR
+
+- Menggambarkan titik-titik SAR untuk mengikuti tren.
+- Parameter akselerasi yang dapat disesuaikan.
