@@ -1,0 +1,206 @@
+//@version=5
+indicator("red-sell green-buy TP and SL", overlay=true) 
+
+///////////// RSI
+RSIlength = input.int( 16 ,title="RSI Period Length") 
+RSIvalue = input.int( 45 ,title="RSI Value Range") 
+RSIoverSold = 0 + RSIvalue
+RSIoverBought = 100 - RSIvalue
+price = close
+vrsi = ta.rsi(price, RSIlength)
+
+
+///////////// Bollinger Bands
+BBlength = input.int(20, minval=1,title="Bollinger Bands SMA Period Length")
+BBmult = input.float(2.0, minval=0.001, maxval=50,title="Bollinger Bands Standard Deviation")
+BBbasis = ta.sma(price, BBlength)
+BBdev = BBmult * ta.stdev(price, BBlength)
+BBupper = BBbasis + BBdev
+BBlower = BBbasis - BBdev
+source = close
+buyEntry = ta.crossover(source, BBlower)
+sellEntry = ta.crossunder(source, BBupper)
+
+
+///////////// SMA Line
+// sma_length = input.int(8, title="SMA Length")
+// sma_line = request.security(syminfo.tickerid, "15", ta.sma(close, sma_length), lookahead=barmerge.lookahead_off)
+// plot(sma_line, title="SMA 8", color=color.white, linewidth=2, offset=0)
+
+
+///////////// Colors
+switch1=input.bool(true, title="Enable Bar Color?")
+switch2=input.bool(true, title="Enable Background Color?")
+RSICondition = vrsi <= RSIoverSold
+TrendColor = RSICondition and (price[1] < BBlower and price > BBlower) ? color.green : na
+TrendCondition = RSICondition and (price[1] < BBlower and price > BBlower)
+barcolor(switch1?TrendColor:na)
+bgcolor(switch2 and TrendCondition ? color.new(color.green, 50) : na, title="Background Color")
+//
+
+length = input.int(10)
+
+bband(length, mult) =>
+	ta.sma(close, length) + mult * ta.stdev(close, length)
+keltner(length, mult) =>
+	ta.ema(close, length) + mult * ta.ema(ta.tr, length)
+
+e1 = (ta.highest(high, length) + ta.lowest(low, length)) / 2 + ta.sma(close, length)
+osc = ta.linreg(close - e1 / 2, length, 0)
+diff = bband(length, 2) - keltner(length, 1)
+osc_color = osc[1] < osc[0] ? osc[0] >= 0 ? #00ffff : #cc00cc : osc[0] >= 0 ? #009b9b : #ff9bff
+mid_color = diff >= 0 ? color.green : color.red
+//
+method = input.string(defval="ATR", options=["ATR", "Traditional", "Part of Price"], title="Renko Assignment Method")
+methodvalue = input.float(defval=14.0, minval=0, title="Value")
+pricesource = input.string(defval="Close", options=["Close", "Open / Close", "High / Low"], title="Price Source")
+useClose = pricesource == "Close"
+useOpenClose = pricesource == "Open / Close" or useClose
+useTrueRange = input.string(defval="Auto", options=["Always", "Auto", "Never"], title="Use True Range ")
+isOscillating=input.bool(defval=true, title="Oscillating")
+normalize=input.bool(defval=false, title="Normalize")
+vol = useTrueRange == "Always" or (useTrueRange == "Auto" and na(osc))? ta.tr : osc
+op = useClose ? close : open
+hi = useOpenClose ? close >= op ? close : op : high
+lo = useOpenClose ? close <= op ? close : op : low
+
+if method == "ATR"
+    methodvalue := ta.atr(math.round(methodvalue))
+if method == "Part of Price"
+    methodvalue := close/methodvalue
+
+currclose = 0.0
+prevclose = nz(currclose[1])
+prevhigh = prevclose + methodvalue
+prevlow = prevclose - methodvalue
+currclose := hi > prevhigh ? hi : lo < prevlow ? lo : prevclose
+
+direction = 0
+direction := currclose > prevclose ? 1 : currclose < prevclose ? -1 : nz(direction[1])
+directionHasChanged = ta.change(direction) != 0
+directionIsUp = direction > 0
+directionIsDown = direction < 0
+
+barcount = 1
+barcount := not directionHasChanged and normalize ? barcount[1] + barcount : barcount
+vol := not directionHasChanged ? osc[1] + osc : osc
+res = barcount > 1 ? vol/barcount : vol
+
+
+
+// Conditions
+
+longCond = false
+shortCond = false
+longCond := RSICondition and (price[1] < BBlower and price > BBlower) or direction > 0 and ta.change(direction) != 0
+shortCond := direction < 0 and ta.change(direction) != 0
+
+// Count your long short conditions for more control with Pyramiding
+
+sectionLongs = 0
+sectionLongs := nz(sectionLongs[1])
+sectionShorts = 0
+sectionShorts := nz(sectionShorts[1])
+
+if longCond
+    sectionLongs := sectionLongs + 1
+    sectionShorts := 0
+
+if shortCond
+    sectionLongs := 0
+    sectionShorts := sectionShorts + 1
+    
+// Pyramiding
+
+pyrl = 1
+
+// These check to see your signal and cross references it against the pyramiding settings above
+
+longCondition = longCond and sectionLongs <= pyrl 
+shortCondition = shortCond and sectionShorts <= pyrl 
+
+// Get the price of the last opened long or short
+
+last_open_longCondition = 0.0
+last_open_shortCondition = 0.0
+last_open_longCondition := longCondition ? open : nz(last_open_longCondition[1])
+last_open_shortCondition := shortCondition ? open : nz(last_open_shortCondition[1])
+
+// Check if your last postion was a long or a short
+
+last_longCondition = 0
+last_shortCondition = 0
+last_longCondition := longCondition ? time : nz(last_longCondition[1])
+last_shortCondition := shortCondition ? time : nz(last_shortCondition[1])
+
+in_longCondition = last_longCondition > last_shortCondition
+in_shortCondition = last_shortCondition > last_longCondition
+
+// Take profit
+
+isTPl = input.bool(false, "Take Profit Long")
+isTPs = input.bool(false, "Take Profit Short")
+tp = input.float(5, "Take Profit %")
+long_tp = isTPl and ta.crossover(high, (1+(tp/100))*last_open_longCondition) and longCondition == 0 and in_longCondition  == 1 
+short_tp = isTPs and ta.crossunder(low, (1-(tp/100))*last_open_shortCondition) and shortCondition == 0 and in_shortCondition == 1 
+
+// Stop Loss
+
+isSLl = input.bool(false, "Stop Loss Long")
+isSLs = input.bool(false, "Stop Loss Short")
+sl= 0.0
+sl := input.float(3, "Stop Loss %")
+long_sl = isSLl and ta.crossunder(low, (1-(sl/100))*last_open_longCondition) and longCondition == 0 and in_longCondition == 1
+short_sl = isSLs and ta.crossover(high, (1+(sl/100))*last_open_shortCondition) and shortCondition == 0 and in_shortCondition == 1
+
+// Create a single close for all the different closing conditions.
+
+long_close = long_tp or long_sl ? 1 : 0
+short_close = short_tp or short_sl ? 1 : 0
+
+// Get the time of the last close
+
+last_long_close = 0
+last_short_close = 0
+last_long_close := long_close ? time : nz(last_long_close[1])
+last_short_close := short_close ? time : nz(last_short_close[1])
+
+// Alerts & Signals
+
+bton(b) => b ? 1 : 0
+
+// Buy/Sell signals using labels (Pine Script v5)
+if longCondition
+    label.new(bar_index, low, "BUY", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if shortCondition
+    label.new(bar_index, high, "SELL", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// Keep the existing TP/SL plotshapes
+plotshape(long_tp and last_longCondition > nz(last_long_close[1]), text ="TP", title="Take Profit Long", style=shape.triangledown, 
+   location=location.abovebar, color = color.red) 
+plotshape(short_tp and last_shortCondition > nz(last_short_close[1]) , text ="TP", title="Take Profit Short", style=shape.triangleup, 
+   location=location.belowbar, color = color.lime) 
+
+ltp = long_tp and last_longCondition > nz(last_long_close[1]) ? (1+(tp/100))*last_open_longCondition : na
+plot(ltp, style=plot.style_cross, linewidth=3, color = color.white)
+stp = short_tp and last_shortCondition > nz(last_short_close[1]) ? (1-(tp/100))*last_open_shortCondition : na
+plot(stp, style = plot.style_cross, linewidth=3, color = color.white)
+
+plotshape(long_sl and last_longCondition > nz(last_long_close[1]), text ="SL", title="Stop Loss Long", style=shape.triangledown, 
+   location=location.abovebar, color = color.red) 
+plotshape(short_sl and last_shortCondition > nz(last_short_close[1]), text ="SL", title="Stop Loss Short", style=shape.triangleup, 
+   location=location.belowbar, color = color.lime) 
+
+lsl = long_sl and last_longCondition > nz(last_long_close[1]) ? (1-(sl/100))*last_open_longCondition : na
+plot(lsl, style=plot.style_cross, linewidth=3, color = color.white)
+ssl = short_sl and last_shortCondition > nz(last_short_close[1]) ? (1+(sl/100))*last_open_shortCondition : na
+plot(ssl, style = plot.style_cross, linewidth=3, color = color.white)
+
+alertcondition(bton(longCondition), title="Buy Alert")
+alertcondition(bton(shortCondition), title="Sell Alert")
+alertcondition(bton(long_tp and last_longCondition > nz(last_long_close[1])), title="Take Profit Long")
+alertcondition(bton(short_tp and last_shortCondition > nz(last_short_close[1])), title="Take Profit Short")
+alertcondition(bton(long_sl and last_longCondition > nz(last_long_close[1])), title="Stop Loss Long")
+alertcondition(bton(short_sl and last_shortCondition > nz(last_short_close[1])), title="Stop Loss Short")
+

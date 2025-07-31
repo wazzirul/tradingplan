@@ -1,0 +1,274 @@
+//@version=5
+indicator("Enhanced Scalping Strategy - High Win Rate 5-10 Pips", overlay=true)
+
+// ============================================================================
+// ENHANCED SCALPING STRATEGY
+// Optimized for 5-10 pip targets with high win rate
+// Based on multiple indicator confirmation system
+// ============================================================================
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INPUT PARAMETERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// EMA Trend System
+ema_fast = input.int(5, "Fast EMA", group="EMA Trend System")
+ema_medium = input.int(13, "Medium EMA", group="EMA Trend System")
+ema_slow = input.int(21, "Slow EMA", group="EMA Trend System")
+
+// RSI Settings (Optimized for Scalping)
+rsi_length = input.int(14, "RSI Length", group="RSI Settings")
+rsi_oversold = input.int(30, "RSI Oversold Level", group="RSI Settings")
+rsi_overbought = input.int(70, "RSI Overbought Level", group="RSI Settings")
+
+// Stochastic Settings
+stoch_k = input.int(14, "Stochastic %K", group="Stochastic Settings")
+stoch_d = input.int(3, "Stochastic %D", group="Stochastic Settings")
+stoch_smooth = input.int(3, "Stochastic Smooth", group="Stochastic Settings")
+stoch_oversold = input.int(20, "Stochastic Oversold", group="Stochastic Settings")
+stoch_overbought = input.int(80, "Stochastic Overbought", group="Stochastic Settings")
+
+// Bollinger Bands
+bb_length = input.int(20, "BB Length", group="Bollinger Bands")
+bb_mult = input.float(2.0, "BB Multiplier", group="Bollinger Bands")
+
+// Scalping TP/SL (Fixed Pips)
+enable_tp = input.bool(true, "Enable Take Profit", group="Risk Management")
+tp_pips = input.int(8, "Take Profit (Pips)", minval=3, maxval=20, group="Risk Management")
+enable_sl = input.bool(true, "Enable Stop Loss", group="Risk Management")
+sl_pips = input.int(5, "Stop Loss (Pips)", minval=2, maxval=15, group="Risk Management")
+
+// Session Filters
+enable_session_filter = input.bool(true, "Enable Session Filter", group="Session Filter")
+london_session = input.session("0800-1700", "London Session", group="Session Filter")
+ny_session = input.session("1300-2200", "New York Session", group="Session Filter")
+
+// Volume Filter
+enable_volume_filter = input.bool(true, "Enable Volume Filter", group="Volume Filter")
+volume_ma_length = input.int(20, "Volume MA Length", group="Volume Filter")
+volume_multiplier = input.float(1.2, "Volume Multiplier", group="Volume Filter")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INDICATOR CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// EMA Calculations
+ema5 = ta.ema(close, ema_fast)
+ema13 = ta.ema(close, ema_medium)
+ema21 = ta.ema(close, ema_slow)
+
+// Plot EMAs
+plot(ema5, "EMA 5", color=color.yellow, linewidth=1)
+plot(ema13, "EMA 13", color=color.orange, linewidth=1)
+plot(ema21, "EMA 21", color=color.red, linewidth=2)
+
+// RSI Calculation
+rsi = ta.rsi(close, rsi_length)
+
+// Stochastic Calculation
+stoch_k_value = ta.stoch(close, high, low, stoch_k)
+stoch_d_value = ta.sma(stoch_k_value, stoch_d)
+
+// Bollinger Bands
+bb_basis = ta.sma(close, bb_length)
+bb_dev = bb_mult * ta.stdev(close, bb_length)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+
+// Plot Bollinger Bands
+plot(bb_upper, "BB Upper", color=color.blue, linewidth=1)
+plot(bb_basis, "BB Basis", color=color.gray, linewidth=1)
+plot(bb_lower, "BB Lower", color=color.blue, linewidth=1)
+
+// Volume Filter
+volume_ma = ta.sma(volume, volume_ma_length)
+volume_condition = not enable_volume_filter or volume > volume_ma * volume_multiplier
+
+// Session Filter
+in_london = not enable_session_filter or time(timeframe.period, london_session)
+in_ny = not enable_session_filter or time(timeframe.period, ny_session)
+session_condition = in_london or in_ny
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TREND ANALYSIS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// EMA Trend Direction
+bullish_ema_alignment = ema5 > ema13 and ema13 > ema21 and close > ema5
+bearish_ema_alignment = ema5 < ema13 and ema13 < ema21 and close < ema5
+
+// Price relative to EMAs
+price_above_emas = close > ema5 and close > ema13 and close > ema21
+price_below_emas = close < ema5 and close < ema13 and close < ema21
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SIGNAL CONDITIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// RSI Conditions
+rsi_bullish = rsi > rsi_oversold and rsi < 60 // Not overbought
+rsi_bearish = rsi < rsi_overbought and rsi > 40 // Not oversold
+rsi_oversold_bounce = rsi < rsi_oversold and rsi[1] < rsi_oversold and rsi > rsi[1]
+rsi_overbought_drop = rsi > rsi_overbought and rsi[1] > rsi_overbought and rsi < rsi[1]
+
+// Stochastic Conditions
+stoch_bullish_cross = ta.crossover(stoch_k_value, stoch_d_value) and stoch_k_value < stoch_overbought
+stoch_bearish_cross = ta.crossunder(stoch_k_value, stoch_d_value) and stoch_k_value > stoch_oversold
+stoch_oversold_area = stoch_k_value < stoch_oversold and stoch_d_value < stoch_oversold
+stoch_overbought_area = stoch_k_value > stoch_overbought and stoch_d_value > stoch_overbought
+
+// Bollinger Band Conditions
+bb_squeeze = (bb_upper - bb_lower) < ta.sma(bb_upper - bb_lower, 20) * 0.8
+bb_lower_touch = low <= bb_lower * 1.001 and close > bb_lower
+bb_upper_touch = high >= bb_upper * 0.999 and close < bb_upper
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENTRY SIGNAL LOGIC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// LONG CONDITIONS (Multiple Confirmation)
+long_condition_1 = bullish_ema_alignment and rsi_bullish and stoch_bullish_cross and volume_condition and session_condition
+long_condition_2 = price_above_emas and bb_lower_touch and rsi_oversold_bounce and volume_condition and session_condition
+long_condition_3 = ta.crossover(close, ema13) and rsi > rsi_oversold and stoch_oversold_area and volume_condition and session_condition
+
+// SHORT CONDITIONS (Multiple Confirmation)
+short_condition_1 = bearish_ema_alignment and rsi_bearish and stoch_bearish_cross and volume_condition and session_condition
+short_condition_2 = price_below_emas and bb_upper_touch and rsi_overbought_drop and volume_condition and session_condition
+short_condition_3 = ta.crossunder(close, ema13) and rsi < rsi_overbought and stoch_overbought_area and volume_condition and session_condition
+
+// Final Entry Signals
+longSignal = long_condition_1 or long_condition_2 or long_condition_3
+shortSignal = short_condition_1 or short_condition_2 or short_condition_3
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POSITION TRACKING
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Track last entry prices
+var float last_long_price = na
+var float last_short_price = na
+var int last_long_time = 0
+var int last_short_time = 0
+
+if longSignal
+    last_long_price := close
+    last_long_time := time
+    last_short_price := na
+
+if shortSignal
+    last_short_price := close
+    last_short_time := time
+    last_long_price := na
+
+// Position status
+in_long = not na(last_long_price) and (na(last_short_price) or last_long_time > last_short_time)
+in_short = not na(last_short_price) and (na(last_long_price) or last_short_time > last_long_time)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAKE PROFIT AND STOP LOSS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Convert pips to points (adjust for different instruments)
+pip_value = syminfo.mintick * (syminfo.type == "forex" ? 10 : 1)
+
+// TP/SL Levels
+long_tp_level = enable_tp and not na(last_long_price) ? last_long_price + (tp_pips * pip_value) : na
+long_sl_level = enable_sl and not na(last_long_price) ? last_long_price - (sl_pips * pip_value) : na
+short_tp_level = enable_tp and not na(last_short_price) ? last_short_price - (tp_pips * pip_value) : na
+short_sl_level = enable_sl and not na(last_short_price) ? last_short_price + (sl_pips * pip_value) : na
+
+// TP/SL Hit Detection
+long_tp_hit = in_long and enable_tp and not na(long_tp_level) and high >= long_tp_level
+long_sl_hit = in_long and enable_sl and not na(long_sl_level) and low <= long_sl_level
+short_tp_hit = in_short and enable_tp and not na(short_tp_level) and low <= short_tp_level
+short_sl_hit = in_short and enable_sl and not na(short_sl_level) and high >= short_sl_level
+
+// Close positions on TP/SL
+if long_tp_hit or long_sl_hit
+    last_long_price := na
+    
+if short_tp_hit or short_sl_hit
+    last_short_price := na
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VISUAL SIGNALS AND PLOTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Entry Signals
+plotshape(longSignal, "Long Signal", shape.triangleup, location.belowbar, color.lime, size=size.small)
+plotshape(shortSignal, "Short Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// TP/SL Signals
+plotshape(long_tp_hit, "Long TP", shape.diamond, location.abovebar, color.green, size=size.small, text="TP")
+plotshape(long_sl_hit, "Long SL", shape.diamond, location.belowbar, color.red, size=size.small, text="SL")
+plotshape(short_tp_hit, "Short TP", shape.diamond, location.belowbar, color.green, size=size.small, text="TP")
+plotshape(short_sl_hit, "Short SL", shape.diamond, location.abovebar, color.red, size=size.small, text="SL")
+
+// TP/SL Lines
+plot(long_tp_level, "Long TP", color=color.green, linewidth=2, style=plot.style_cross)
+plot(long_sl_level, "Long SL", color=color.red, linewidth=2, style=plot.style_cross)
+plot(short_tp_level, "Short TP", color=color.green, linewidth=2, style=plot.style_cross)
+plot(short_sl_level, "Short SL", color=color.red, linewidth=2, style=plot.style_cross)
+
+// Background coloring for trend
+bgcolor(bullish_ema_alignment ? color.new(color.green, 95) : bearish_ema_alignment ? color.new(color.red, 95) : na)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+alertcondition(longSignal, "Long Entry Signal", "Scalping Long Signal - Enter Long Position")
+alertcondition(shortSignal, "Short Entry Signal", "Scalping Short Signal - Enter Short Position")
+alertcondition(long_tp_hit, "Long Take Profit", "Long TP Hit - Close Long Position")
+alertcondition(long_sl_hit, "Long Stop Loss", "Long SL Hit - Close Long Position")
+alertcondition(short_tp_hit, "Short Take Profit", "Short TP Hit - Close Short Position")
+alertcondition(short_sl_hit, "Short Stop Loss", "Short SL Hit - Close Short Position")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TABLE FOR INFORMATION DISPLAY
+// ═══════════════════════════════════════════════════════════════════════════
+
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1)
+    table.cell(info_table, 0, 0, "Scalping Info", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 0, "", text_color=color.black, text_size=size.small)
+    
+    table.cell(info_table, 0, 1, "TP Pips:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 1, str.tostring(tp_pips), text_color=color.green, text_size=size.small)
+    
+    table.cell(info_table, 0, 2, "SL Pips:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 2, str.tostring(sl_pips), text_color=color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 3, "R:R Ratio:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 3, str.tostring(math.round(tp_pips/sl_pips, 2)), text_color=color.blue, text_size=size.small)
+    
+    table.cell(info_table, 0, 4, "RSI:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 4, str.tostring(math.round(rsi, 1)), text_color=color.blue, text_size=size.small)
+    
+    table.cell(info_table, 0, 5, "Stoch %K:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 5, str.tostring(math.round(stoch_k_value, 1)), text_color=color.blue, text_size=size.small)
+    
+    table.cell(info_table, 0, 6, "Position:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 6, in_long ? "LONG" : in_short ? "SHORT" : "FLAT", 
+               text_color=in_long ? color.green : in_short ? color.red : color.gray, text_size=size.small)
+    
+    table.cell(info_table, 0, 7, "Session:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 7, session_condition ? "ACTIVE" : "INACTIVE", 
+               text_color=session_condition ? color.green : color.red, text_size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STRATEGY NOTES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// This enhanced scalping strategy combines multiple proven techniques:
+// 1. EMA trend alignment for direction bias
+// 2. RSI for momentum confirmation  
+// 3. Stochastic for entry timing
+// 4. Bollinger Bands for volatility and mean reversion
+// 5. Volume filter for signal strength
+// 6. Session filter for optimal trading times
+// 7. Fixed pip TP/SL for consistent risk management
+//
+// Best used on 1M-5M timeframes for scalping 5-10 pips
+// Recommended currency pairs: EUR/USD, GBP/USD, USD/JPY, AUD/USD
+// Optimal sessions: London (8:00-17:00) and New York (13:00-22:00) GMT
