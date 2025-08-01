@@ -1,0 +1,323 @@
+// This work is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International  
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © BigBeluga
+// Merged with VIDYA OrderFlow Sentiment by wazirul
+
+//@version=6
+indicator('HMA Swing Levels + VIDYA OrderFlow Sentiment [Merged]', 'HMA+VIDYA+OrderFlow', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// === HMA Swing Levels Inputs ===
+group_hma = "HMA Swing Levels"
+len1 = input.int(5, "HMA Trend Change", group = group_hma)
+len2 = input.int(50, "HMA Swing Levels", group = group_hma)
+hma_length = input.int(50, "HMA Length", group = group_hma)
+
+col1 = input.color(#1ae382, "Support Color", inline = "hma_col", group = group_hma)
+col2 = input.color(#ff0000, "Resistance Color", inline = "hma_col", group = group_hma)
+
+// === VIDYA + OrderFlow Inputs ===
+group_vidya = "VIDYA Settings"
+int vidya_length = input.int(10, 'VIDYA Length', group = group_vidya)
+int vidya_momentum = input.int(20, 'VIDYA Momentum', group = group_vidya)
+float band_distance = input.float(2, 'Distance factor for upper/lower bands', step = 0.1, group = group_vidya)
+int pivot_left_bars = 3
+int pivot_right_bars = pivot_left_bars
+float source = input.source(close, 'Source', group = group_vidya)
+
+// === Color Settings ===
+group_color = "Colors"
+color up_trend_color = input(#17dfad, 'Uptrend Color', group = group_color, inline = 'trend_colors')
+color down_trend_color = input(#dd326b, 'Downtrend Color', group = group_color, inline = 'trend_colors')
+bool shadow = input.bool(true, 'Shadow', group = group_color, inline = 'trend_colors')
+
+// === OrderFlow Settings ===
+group_orderflow = "OrderFlow & Sentiment"
+lot_scaling_factor = input.float(0.1, "Lot Scaling Factor (1 Volume = X Lots)", minval=0.01, maxval=1.0, step=0.01, group=group_orderflow)
+table_position = input.string("Top", "Table Position", options=["Top", "Middle", "Bottom"], group=group_orderflow)
+
+// === HMA Variables ===
+h = ta.highest(len2)
+l = ta.lowest(len2)
+mid = math.avg(h, l)
+hma = ta.hma(close, hma_length)
+change = ta.change(hma, len1)
+
+var trail = float(na)
+var hma_color = color(na)
+
+type lines 
+    line  l 
+    label lbl 
+    bool  direction
+
+var data = array.new<lines>()
+
+// === VIDYA Variables ===
+var line pivot_line = na
+var float volume_value = na
+float smoothed_value = na
+var bool is_trend_up = false
+
+var array<line> liquidity_lines_low = array.new<line>(500)
+var array<line> liquidity_lines_high = array.new<line>(500)
+
+var float up_trend_volume = na
+var float down_trend_volume = na
+
+// === OrderFlow Variables ===
+posCol = up_trend_color
+negCol = down_trend_color
+orangeCol = color.new(color.orange, 0)
+currentPriceCol = orangeCol
+neutralCol = color.new(color.gray, 0)
+
+var float[] price_levels = array.new<float>(5, na)
+var float[] buy_volumes = array.new<float>(5, 0)
+var float[] sell_volumes = array.new<float>(5, 0)
+
+// }
+
+// ＦＵＮＣＴＩＯＮＳ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// === VIDYA Function ===
+vidya_calc(src, vidya_length, vidya_momentum) =>
+    float momentum = ta.change(src)
+    float sum_pos_momentum = math.sum(momentum >= 0 ? momentum : 0.0, vidya_momentum)
+    float sum_neg_momentum = math.sum(momentum >= 0 ? 0.0 : -momentum, vidya_momentum)
+    float abs_cmo = math.abs(100 * (sum_pos_momentum - sum_neg_momentum) / (sum_pos_momentum + sum_neg_momentum))
+    float alpha = 2 / (vidya_length + 1)
+    var float vidya_value = 0.0
+    vidya_value := alpha * abs_cmo / 100 * src + (1 - alpha * abs_cmo / 100) * nz(vidya_value[1])
+    ta.sma(vidya_value, 15)
+
+// === Liquidity Lines Extension Method ===
+method extend_liquidity_lines(array<line> line_array, float price_level, bool is_cross, volume_val) =>
+    if line_array.size() > 0 and last_bar_index - bar_index < 5000
+        for i = 0 to line_array.size() - 1 by 1
+            if i < line_array.size()
+                line liquidity_line = line_array.get(i)
+                float current_line_level = line.get_y2(liquidity_line)
+                bool price_cross = is_cross ? price_level < current_line_level and price_level[1] >= current_line_level : price_level > current_line_level and price_level[1] <= current_line_level
+                bool is_short_line = bar_index - line.get_x1(liquidity_line) < 50
+
+                if price_cross and is_short_line
+                    line.set_x2(liquidity_line, bar_index)
+                    line_array.remove(i)
+                    
+                    label.new(bar_index - 1, price_level[1], str.tostring(volume_val, format.volume), color = color.rgb(0, 0, 0, 99), style = is_cross ? label.style_label_lower_left : label.style_label_upper_left, textcolor = chart.fg_color, size = size.small)
+                    label.new(bar_index - 1, price_level[1], text = '◉', color = #00000003, textcolor = is_cross ? down_trend_color : up_trend_color, style = label.style_label_center, size = size.normal)
+
+// }
+
+// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// === HMA Swing Levels Calculations ===
+if last_bar_index - bar_index < 4000
+    if h[1] == high[1] and high < h and change > 0
+        label.new(bar_index[1], high[1], "▇", style = label.style_label_center, color = color(na), textcolor = col2, size = size.tiny)
+        lbl = label.new(bar_index[1], high[1], str.tostring(high[1]), style = label.style_label_left, color = color(na), textcolor = col2, size = size.normal)
+        l1   = line.new(bar_index[1], high[1], bar_index, high[1], color = col2)
+        gg = lines.new(l1, lbl, false)
+        data.push(gg)
+
+    if l[1] == low[1] and low > l and change < 0
+        label.new(bar_index[1], low[1], "▇", style = label.style_label_center, color = color(na), textcolor = col1, size = size.tiny)
+        lbl = label.new(bar_index[1], low[1], str.tostring(low[1]), style = label.style_label_left, color = color(na), textcolor = col1, size = size.normal)
+        l2   = line.new(bar_index[1], low[1], bar_index, low[1], color = col1)
+        gg = lines.new(l2, lbl, true)
+        data.push(gg)
+
+// === HMA Lines Management ===
+if data.size() > 0 
+    for gg in data
+        l_ = gg.l
+        lbl = gg.lbl
+        l_.set_x2(bar_index)
+        lbl.set_x(bar_index)
+
+        if l_.get_x2() - l_.get_x1() > 250
+            l_.set_width(2)
+        if l_.get_x2() - l_.get_x1() > 500
+            l_.set_width(3)
+        if l_.get_x2() - l_.get_x1() > 750
+            l_.set_width(4)
+            
+        if gg.direction
+            if low < l_.get_y1()
+                l_.set_width(1)
+                label.delete(lbl)
+                l_.set_style(line.style_dashed)
+                ss = lines.new(line(na), label(na))
+                data.set(data.indexof(gg), ss)
+        else
+            if high > l_.get_y1()
+                l_.set_width(1)
+                label.delete(lbl)
+                l_.set_style(line.style_dashed)
+                ss = lines.new(line(na), label(na))
+                data.set(data.indexof(gg), ss)
+
+// === HMA Trail Color ===
+if change > 0 
+    trail := hma
+    hma_color := color.lime
+if change < 0 
+    trail := hma
+    hma_color := color.red
+
+// === VIDYA Calculations ===
+float atr_value = ta.atr(200)
+vidya_value = vidya_calc(source, vidya_length, vidya_momentum)
+float upper_band = vidya_value + atr_value * band_distance
+float lower_band = vidya_value - atr_value * band_distance
+
+// === VIDYA Trend Detection ===
+if ta.crossover(source, upper_band)
+    is_trend_up := true
+if ta.crossunder(source, lower_band)
+    is_trend_up := false
+
+// === VIDYA Smoothing ===
+if is_trend_up
+    smoothed_value := lower_band
+if not is_trend_up
+    smoothed_value := upper_band
+if ta.change(is_trend_up)
+    smoothed_value := na
+
+// === Pivot Detection ===
+bool pivot_high = not na(ta.pivothigh(pivot_left_bars, pivot_right_bars))
+bool pivot_low = not na(ta.pivotlow(close, pivot_left_bars, pivot_right_bars))
+
+// === VIDYA Liquidity Lines ===
+if low[pivot_right_bars] > smoothed_value and pivot_low
+    pivot_line := line.new(bar_index[pivot_right_bars], low[pivot_right_bars], bar_index[pivot_right_bars] + 5, low[pivot_right_bars], color = color.new(up_trend_color, 50))
+    liquidity_lines_low.push(pivot_line)
+    volume_value := math.sum(volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+
+if high[pivot_right_bars] < smoothed_value and pivot_high
+    pivot_line := line.new(bar_index[pivot_right_bars], high[pivot_right_bars], bar_index[pivot_right_bars] + 5, high[pivot_right_bars], color = color.new(down_trend_color, 50))
+    liquidity_lines_high.push(pivot_line)
+    volume_value := math.sum(-volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+
+liquidity_lines_high.extend_liquidity_lines(smoothed_value, true, volume_value)
+liquidity_lines_low.extend_liquidity_lines(smoothed_value, false, volume_value)
+
+// === Volume Tracking ===
+bool trend_cross_up = not is_trend_up[1] and is_trend_up
+bool trend_cross_down = not is_trend_up and is_trend_up[1]
+
+if ta.change(trend_cross_up) or ta.change(trend_cross_down)
+    up_trend_volume := 0
+    down_trend_volume := 0
+
+if not(ta.change(trend_cross_up) or ta.change(trend_cross_down))
+    up_trend_volume := up_trend_volume + (close > open ? volume : 0)
+    down_trend_volume := down_trend_volume + (close < open ? volume : 0)
+
+float avg_volume_delta = (up_trend_volume + down_trend_volume) / 2
+color trend_color = is_trend_up ? up_trend_color : not is_trend_up ? down_trend_color : chart.fg_color
+string delta_volume = str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent) == 'NaN%' ? '0%' : str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent)
+
+// === OrderFlow Calculations ===
+float bin_size = (high - low) / 5
+for i = 0 to 4
+    array.set(price_levels, i, low + bin_size * i + bin_size / 2)
+
+float price_change = close - open
+float base_weight = 0.0
+for i = 0 to 4
+    float level = array.get(price_levels, i)
+    float dist_to_open = math.abs(level - open) / (high - low)
+    float dist_to_close = math.abs(level - close) / (high - low)
+    float activity_weight = 1.0 - math.min(dist_to_open, dist_to_close)
+    
+    if price_change > 0
+        base_weight := (level - low) / (high - low)
+    else if price_change < 0
+        base_weight := (high - level) / (high - low)
+    else
+        base_weight := 0.5
+        
+    float variation = (math.random(0, 1) - 0.5) * 0.4
+    float adjusted_weight = math.min(math.max(base_weight + variation, 0.1), 0.9)
+    float scaled_volume = volume * lot_scaling_factor * 10000
+    float bin_volume = scaled_volume * activity_weight / 5
+    array.set(buy_volumes, i, bin_volume * adjusted_weight)
+    array.set(sell_volumes, i, bin_volume * (1 - adjusted_weight))
+
+float total_buy_volume = 0.0
+float total_sell_volume = 0.0
+for i = 0 to 4
+    total_buy_volume := total_buy_volume + array.get(buy_volumes, i)
+    total_sell_volume := total_sell_volume + array.get(sell_volumes, i)
+
+float total_volume = total_buy_volume + total_sell_volume
+float buy_sentiment = total_volume > 0 ? (total_buy_volume / total_volume) * 100 : 50.0
+float sell_sentiment = total_volume > 0 ? (total_sell_volume / total_volume) * 100 : 50.0
+color sentiment_color = buy_sentiment > sell_sentiment ? posCol : negCol
+
+// === Find Current Price Bin ===
+int current_price_bin = -1
+float min_distance = math.abs(close - array.get(price_levels, 0))
+for i = 0 to 4
+    float distance = math.abs(close - array.get(price_levels, i))
+    if distance < min_distance
+        min_distance := distance
+        current_price_bin := i
+
+// }
+
+// ＰＬＯＴ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// === HMA Trail Plot ===
+pt = plot(trail, color = hma_color, style = plot.style_line, linewidth = 2, title = "HMA Trail")
+plot(trail, color = color.new(hma_color, 60), style = plot.style_line, linewidth = 6, title = "HMA Trail Shadow")
+
+// === VIDYA Plot ===
+p1 = plot(smoothed_value, color = trend_color, linewidth = 2, style = plot.style_linebr, title = "VIDYA Trend")
+p2 = plot(hl2, display = display.none)
+fill(p1, p2, smoothed_value, hl2, color.new(trend_color, shadow ? 80 : 100), na)
+
+// === Trend Change Markers ===
+plotshape(series = trend_cross_up[1] ? smoothed_value[0] : na, title = 'Trend Up', style = shape.labelup, location = location.absolute, color = color.new(up_trend_color, 50), text = '▲', textcolor = chart.fg_color)
+plotshape(series = trend_cross_down[1] ? smoothed_value[0] : na, title = 'Trend Down', style = shape.labeldown, location = location.absolute, color = color.new(down_trend_color, 50), text = '▼', textcolor = chart.fg_color)
+
+// === Volume Labels ===
+if barstate.islast
+    label.delete(label.new(bar_index, smoothed_value, 'Buy: ' + str.tostring(up_trend_volume, format.volume) + '\n Sell: ' + str.tostring(down_trend_volume, format.volume) + '\nDelta Volume: ' + delta_volume, color = color.new(trend_color, 90), style = is_trend_up ? label.style_label_upper_left : label.style_label_lower_left, textcolor = chart.fg_color)[1])
+    label.delete(label.new(bar_index, smoothed_value, text = '✪', color = #00000003, textcolor = trend_color, style = label.style_label_center, size = size.large)[1])
+
+// === OrderFlow Table ===
+var table combined_table = switch table_position
+    "Top" => table.new(position.top_right, 3, 7, border_width=1)
+    "Middle" => table.new(position.middle_right, 3, 7, border_width=1)
+    "Bottom" => table.new(position.bottom_right, 3, 7, border_width=1)
+
+if barstate.isrealtime or barstate.islast
+    // Sentiment row
+    table.cell(combined_table, 0, 0,"Sentiment: " + str.tostring(math.round(buy_sentiment, 1)) + "% Buy / " + str.tostring(math.round(sell_sentiment, 1)) + "% Sell", bgcolor=sentiment_color, text_color=color.white, text_size=size.tiny)
+    blueHeader = color.new(color.blue, 0)
+    table.cell(combined_table, 1, 0, "Total Buy: " + str.tostring(math.round(total_buy_volume)), bgcolor=blueHeader, text_color=color.white, text_size=size.tiny)
+    table.cell(combined_table, 2, 0, "Total Sell: " + str.tostring(math.round(total_sell_volume)), bgcolor=blueHeader, text_color=color.white, text_size=size.tiny)
+    table.cell(combined_table, 0, 1, "Price", bgcolor=blueHeader, text_color=color.white, text_size=size.tiny)
+    table.cell(combined_table, 1, 1, "Buy Volume", bgcolor=blueHeader, text_color=color.white, text_size=size.tiny)
+    table.cell(combined_table, 2, 1, "Sell Volume", bgcolor=blueHeader, text_color=color.white, text_size=size.tiny)
+    
+    // OrderBook data
+    for i = 0 to 4
+        int row = 6 - i
+        float price = array.get(price_levels, i)
+        float buy_vol = array.get(buy_volumes, i)
+        float sell_vol = array.get(sell_volumes, i)
+        bool is_current_price = i == current_price_bin
+        color buy_bg = is_current_price ? orangeCol : (buy_vol > sell_vol ? up_trend_color : neutralCol)
+        color sell_bg = is_current_price ? orangeCol : (sell_vol > buy_vol ? down_trend_color : neutralCol)
+        color price_bg = is_current_price ? orangeCol : neutralCol
+        table.cell(combined_table, 0, row, str.tostring(price, "#,###.###"), bgcolor=price_bg, text_color=color.white, text_size=size.tiny)
+        table.cell(combined_table, 1, row, str.tostring(int(buy_vol)), bgcolor=buy_bg, text_color=color.white, text_size=size.tiny)
+        table.cell(combined_table, 2, row, str.tostring(int(sell_vol)), bgcolor=sell_bg, text_color=color.white, text_size=size.tiny)
+
+// }

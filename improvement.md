@@ -18,16 +18,16 @@ Stochastic Divergence: Early reversal warnings
 Volume Divergence: Price up but volume declining
 Signal Boost: +25-35% early reversal signals
 
-🎯 SPECIALIZED SCALPING TECHNIQUES 13. Mean Reversion Enhancement
-Z-Score Analysis: Statistical overbought/oversold levels
-Linear Regression Channels: Automatic support/resistance
-Standard Deviation Bands: Alternative to Bollinger Bands
-Price Distance from MA: Percentage deviation triggers 14. Breakout Confirmation Systems
-Range Identification: Automatic support/resistance detection
-Consolidation Pattern Recognition: Triangles, flags, pennants
-Failed Breakout Reversals: Fake-out reversal trades
-Volume-Confirmed Breakouts: Only trade with volume spike 15. News & Event-Driven Scalping
-Economic Calendar Integration: Trade around news releases
-Volatility Prediction: Pre-event positioning
-Post-News Momentum: Capitalize on reaction moves
-Gap Fill Strategies: Weekend/overnight gap trading
+🎯 SPECIALIZED SCALPING TECHNIQUES
+
+13. Mean Reversion Enhancement
+    Z-Score Analysis: Statistical overbought/oversold levels
+    Linear Regression Channels: Automatic support/resistance
+    Standard Deviation Bands: Alternative to Bollinger Bands
+    Price Distance from MA: Percentage deviation triggers
+
+14. Breakout Confirmation Systems
+    Range Identification: Automatic support/resistance detection
+    Consolidation Pattern Recognition: Triangles, flags, pennants
+    Failed Breakout Reversals: Fake-out reversal trades
+    Volume-Confirmed Breakouts: Only trade with volume spike
