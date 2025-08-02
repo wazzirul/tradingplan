@@ -1,0 +1,279 @@
+// This work is licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International  
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © BigBeluga - Combined VIDYA + HMA Indicator
+
+//@version=6
+indicator('Combined VIDYA + HMA Swing Levels [BigBeluga]', 'VIDYA+HMA Combined [BigBeluga]', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+
+// ＩＮＰＵＴＳ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// VIDYA Settings
+vidya_group = "VIDYA Settings"
+bool enable_vidya = input.bool(true, 'Enable VIDYA System', group = vidya_group)
+int vidya_length = input.int(10, 'VIDYA Length', group = vidya_group)
+int vidya_momentum = input.int(20, 'VIDYA Momentum', group = vidya_group)
+float band_distance = input.float(2, 'Distance factor for upper/lower bands', step = 0.1, group = vidya_group)
+float source = input.source(close, 'Source', group = vidya_group)
+
+// HMA Settings
+hma_group = "HMA Settings"
+bool enable_hma = input.bool(true, 'Enable HMA System', group = hma_group)
+int hma_trend_change = input.int(5, "HMA Trend Change Length", group = hma_group)
+int hma_swing_length = input.int(50, "HMA Swing Levels Length", group = hma_group)
+int hma_length = input.int(50, "HMA Length", group = hma_group)
+
+// Define pivot parameters
+int pivot_left_bars = 3 // Left side pivot bars
+int pivot_right_bars = pivot_left_bars // Right side pivot bars
+
+// Color Settings
+color_group = "Color Settings"
+color vidya_up_color = input(#17dfad, 'VIDYA Up', group = color_group, inline = 'vidya')
+color vidya_down_color = input(#dd326b, 'VIDYA Down', group = color_group, inline = 'vidya')
+bool vidya_shadow = input.bool(true, 'VIDYA Shadow', group = color_group, inline = 'vidya')
+
+color hma_up_color = input(#1ae382, 'HMA Up', group = color_group, inline = 'hma')
+color hma_down_color = input(#ff0000, 'HMA Down', group = color_group, inline = 'hma')
+
+// Initialize variables for VIDYA system
+var line vidya_pivot_line = na
+var float vidya_volume_value = na
+var float vidya_smoothed_value = na
+var bool vidya_is_trend_up = false
+
+var array<line> vidya_liquidity_lines_low = array.new<line>(500)
+var array<line> vidya_liquidity_lines_high = array.new<line>(500)
+
+var float up_trend_volume = 0.0
+var float down_trend_volume = 0.0
+
+// Initialize variables for HMA system
+float hma_h = ta.highest(hma_swing_length)
+float hma_l = ta.lowest(hma_swing_length)
+float hma_mid = math.avg(hma_h, hma_l)
+
+var float hma_trail = float(na)
+var color hma_color = color(na)
+
+type hma_lines 
+    line  l 
+    label lbl 
+    bool  direction
+
+var hma_data = array.new<hma_lines>()
+// }
+
+
+// ＦＵＮＣＴＩＯＮＳ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// Define VIDYA (Variable Index Dynamic Average) function
+vidya_calc(src, vidya_length, vidya_momentum) =>
+    float momentum = ta.change(src)
+    float sum_pos_momentum = math.sum(momentum >= 0 ? momentum : 0.0, vidya_momentum)
+    float sum_neg_momentum = math.sum(momentum >= 0 ? 0.0 : -momentum, vidya_momentum)
+    float abs_cmo = math.abs(100 * (sum_pos_momentum - sum_neg_momentum) / (sum_pos_momentum + sum_neg_momentum))
+    float alpha = 2 / (vidya_length + 1)
+    var float vidya_value = 0.0
+    vidya_value := alpha * abs_cmo / 100 * src + (1 - alpha * abs_cmo / 100) * nz(vidya_value[1])
+    ta.sma(vidya_value, 15)
+
+// Method to extend VIDYA liquidity lines and add labels
+method extend_vidya_liquidity_lines(array<line> line_array, float price_level, bool is_cross, volume_val) =>
+    if line_array.size() > 0 and last_bar_index - bar_index < 5000
+        for i = 0 to line_array.size() - 1 by 1
+            if i < line_array.size()
+                line liquidity_line = line_array.get(i)
+                float current_line_level = line.get_y2(liquidity_line)
+                bool price_cross = is_cross ? price_level < current_line_level and price_level[1] >= current_line_level : price_level > current_line_level and price_level[1] <= current_line_level
+                bool is_short_line = bar_index - line.get_x1(liquidity_line) < 50
+
+                if price_cross and is_short_line
+                    line.set_x2(liquidity_line, bar_index)
+                    line_array.remove(i)
+
+                    // Add volume label to the liquidity zone
+                    label.new(bar_index - 1, price_level[1], str.tostring(volume_val, format.volume), color = color.rgb(0, 0, 0, 99), style = is_cross ? label.style_label_lower_left : label.style_label_upper_left, textcolor = chart.fg_color, size = size.small)
+
+                    // Add a circle label to represent VIDYA liquidity zone
+                    label.new(bar_index - 1, price_level[1], text = '◉', color = #00000003, textcolor = is_cross ? vidya_down_color : vidya_up_color, style = label.style_label_center, size = size.normal)
+
+// }
+
+
+// ＣＡＬＣＵＬＡＴＩＯＮＳ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// Calculate VIDYA values globally (like original)
+float atr_value = ta.atr(200)
+float vidya_value = vidya_calc(source, vidya_length, vidya_momentum)
+float upper_band = vidya_value + atr_value * band_distance
+float lower_band = vidya_value - atr_value * band_distance
+
+// Calculate HMA values globally (like original)
+float hma = ta.hma(close, hma_length)
+float hma_change = ta.change(hma, hma_trend_change)
+
+// Detect trend direction using crossovers of source with bands (like original)
+if ta.crossover(source, upper_band)
+    vidya_is_trend_up := true
+if ta.crossunder(source, lower_band)
+    vidya_is_trend_up := false
+
+// Set trend-based smoothing variable (exactly like original VIDYA)
+if vidya_is_trend_up
+    vidya_smoothed_value := lower_band
+if not vidya_is_trend_up
+    vidya_smoothed_value := upper_band
+if ta.change(vidya_is_trend_up)
+    vidya_smoothed_value := na
+
+// HMA trail calculation (exactly like original HMA)
+if hma_change > 0 
+    hma_trail := hma
+    hma_color := hma_up_color
+if hma_change < 0 
+    hma_trail := hma
+    hma_color := hma_down_color
+
+// VIDYA liquidity levels (only when enabled)
+if enable_vidya
+    // Calculate pivot highs and lows for price action
+    bool pivot_high = not na(ta.pivothigh(pivot_left_bars, pivot_right_bars))
+    bool pivot_low = not na(ta.pivotlow(close, pivot_left_bars, pivot_right_bars))
+
+    // Create and store lines for pivot lows (support zones)
+    if low[pivot_right_bars] > vidya_smoothed_value and pivot_low
+        vidya_pivot_line := line.new(bar_index[pivot_right_bars], low[pivot_right_bars], bar_index[pivot_right_bars] + 5, low[pivot_right_bars], color = color.new(vidya_up_color, 50))
+        vidya_liquidity_lines_low.push(vidya_pivot_line)
+        vidya_volume_value := math.sum(volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+
+    // Create and store lines for pivot highs (resistance zones)
+    if high[pivot_right_bars] < vidya_smoothed_value and pivot_high
+        vidya_pivot_line := line.new(bar_index[pivot_right_bars], high[pivot_right_bars], bar_index[pivot_right_bars] + 5, high[pivot_right_bars], color = color.new(vidya_down_color, 50))
+        vidya_liquidity_lines_high.push(vidya_pivot_line)
+        vidya_volume_value := math.sum(-volume, pivot_right_bars + pivot_left_bars) / (pivot_right_bars + pivot_left_bars)
+
+    // Extend lines to track price movements
+    vidya_liquidity_lines_high.extend_vidya_liquidity_lines(vidya_smoothed_value, true, vidya_volume_value)
+    vidya_liquidity_lines_low.extend_vidya_liquidity_lines(vidya_smoothed_value, false, vidya_volume_value)
+
+    // Detect changes in the trend direction
+    bool vidya_trend_cross_up = not vidya_is_trend_up[1] and vidya_is_trend_up
+    bool vidya_trend_cross_down = not vidya_is_trend_up and vidya_is_trend_up[1]
+
+    // Reset volume counters when trend changes
+    if ta.change(vidya_trend_cross_up) or ta.change(vidya_trend_cross_down)
+        up_trend_volume := 0
+        down_trend_volume := 0
+
+    // Accumulate volume during trends
+    if not(ta.change(vidya_trend_cross_up) or ta.change(vidya_trend_cross_down))
+        up_trend_volume := up_trend_volume + (close > open ? volume : 0)
+        down_trend_volume := down_trend_volume + (close < open ? volume : 0)
+
+// HMA swing levels (only when enabled)
+if enable_hma
+    if last_bar_index - bar_index < 4000
+        if hma_h[1] == high[1] and high < hma_h and hma_change > 0
+            label.new(bar_index[1], high[1], "▇", style = label.style_label_center, color = color(na), textcolor = hma_down_color, size = size.tiny)
+
+            lbl = label.new(bar_index[1], high[1], str.tostring(high[1]), style = label.style_label_right, color = color(na), textcolor = hma_down_color, size = size.small)
+            l1   = line.new(bar_index[1], high[1], bar_index, high[1], color = color.new(hma_down_color, 30), style = line.style_dotted)
+
+            gg = hma_lines.new(l1, lbl, false)
+            hma_data.push(gg)
+
+        if hma_l[1] == low[1] and low > hma_l and hma_change < 0
+            label.new(bar_index[1], low[1], "▇", style = label.style_label_center, color = color(na), textcolor = hma_up_color, size = size.tiny)
+
+            lbl = label.new(bar_index[1], low[1], str.tostring(low[1]), style = label.style_label_right, color = color(na), textcolor = hma_up_color, size = size.small)
+            l2   = line.new(bar_index[1], low[1], bar_index, low[1], color = color.new(hma_up_color, 30), style = line.style_dotted)
+        
+            gg = hma_lines.new(l2, lbl, true)
+            hma_data.push(gg)
+
+    if hma_data.size() > 0 
+        for gg in hma_data
+            l_ = gg.l
+            lbl = gg.lbl
+
+            l_.set_x2(bar_index)
+            lbl.set_x(bar_index)
+
+            if l_.get_x2() - l_.get_x1() > 250
+                l_.set_width(2)
+
+            if l_.get_x2() - l_.get_x1() > 500
+                l_.set_width(3)
+
+            if l_.get_x2() - l_.get_x1() > 750
+                l_.set_width(4)
+            if gg.direction
+                if low < l_.get_y1()
+                    l_.set_width(1)
+                    label.delete(lbl)
+                    l_.set_style(line.style_dashed)
+                    ss = hma_lines.new(line(na), label(na))
+                    hma_data.set(hma_data.indexof(gg), ss)
+            else
+                if high > l_.get_y1()
+                    l_.set_width(1)
+                    label.delete(lbl)
+                    l_.set_style(line.style_dashed)
+                    ss = hma_lines.new(line(na), label(na))
+                    hma_data.set(hma_data.indexof(gg), ss)
+
+// Calculate combined metrics for display (like original VIDYA)
+float avg_volume_delta = (up_trend_volume + down_trend_volume) / 2
+color vidya_trend_color = vidya_is_trend_up ? vidya_up_color : not vidya_is_trend_up ? vidya_down_color : chart.fg_color
+string delta_volume = str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent) == 'NaN%' ? '0%' : str.tostring((up_trend_volume - down_trend_volume) / avg_volume_delta * 100, format.percent)
+
+// Detect VIDYA trend changes (like original)
+bool vidya_trend_cross_up = not vidya_is_trend_up[1] and vidya_is_trend_up
+bool vidya_trend_cross_down = not vidya_is_trend_up and vidya_is_trend_up[1]
+
+// }
+
+
+// ＰＬＯＴ ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// VIDYA system labels and markers
+if enable_vidya and barstate.islast and not na(vidya_smoothed_value)
+    // Determine trend agreement status and signals
+    string agreement_status = ""
+    if enable_hma
+        bool trends_agree = (vidya_is_trend_up and hma_change > 0) or (not vidya_is_trend_up and hma_change < 0)
+        
+        if trends_agree
+            if vidya_is_trend_up
+                agreement_status := "\n✓ ALIGNED / BUY"
+            else
+                agreement_status := "\n✓ ALIGNED / SELL"
+        else
+            agreement_status := "\n⚠ DIVERGENT"
+    
+    label.delete(label.new(bar_index, vidya_smoothed_value, 'VIDYA\nBuy: ' + str.tostring(up_trend_volume, format.volume) + '\n Sell: ' + str.tostring(down_trend_volume, format.volume) + '\nDelta Volume: ' + delta_volume + agreement_status, color = color.new(vidya_trend_color, 90), style = vidya_is_trend_up ? label.style_label_upper_left : label.style_label_lower_left, textcolor = chart.fg_color)[1])
+
+    label.delete(label.new(bar_index, vidya_smoothed_value, text = '✪', color = #00000003, textcolor = vidya_trend_color, style = label.style_label_center, size = size.large)[1])
+
+// Plot VIDYA trend line (like original - always calculated but conditionally displayed)
+p1 = plot(enable_vidya ? vidya_smoothed_value : na, color = enable_vidya ? vidya_trend_color : na, linewidth = 2, style = plot.style_linebr, title = "VIDYA Trend")
+p2 = plot(hl2, display = display.none)
+
+// Fill between the plot and the VIDYA line (like original)
+fill(p1, p2, enable_vidya ? vidya_smoothed_value : na, hl2, enable_vidya ? color.new(vidya_trend_color, vidya_shadow ? 80 : 100) : na, na)
+
+// Plot HMA trend lines (like original - always calculated but conditionally displayed)  
+plot(enable_hma ? hma_trail : na, color = enable_hma ? hma_color : na, style = plot.style_line, linewidth = 2, title = "HMA Trend")
+plot(enable_hma ? hma_trail : na, color = enable_hma ? color.new(hma_color, 60) : na, style = plot.style_line, linewidth = 6, title = "HMA Trend Shadow")
+
+// Plot VIDYA trend change markers (like original)
+plotshape(series = enable_vidya and vidya_trend_cross_up[1] ? vidya_smoothed_value[0] : na, title = 'VIDYA Trend Up', style = shape.labelup, location = location.absolute, color = color.new(vidya_up_color, 50), text = '▲', textcolor = chart.fg_color)
+
+plotshape(series = enable_vidya and vidya_trend_cross_down[1] ? vidya_smoothed_value[0] : na, title = 'VIDYA Trend Down', style = shape.labeldown, location = location.absolute, color = color.new(vidya_down_color, 50), text = '▼', textcolor = chart.fg_color)
+
+// Plot HMA trend change markers (like original)
+plotshape(series = enable_hma and ta.change(hma_change > 0) and hma_change > 0 ? hma_trail : na, title = 'HMA Trend Up', style = shape.triangleup, location = location.absolute, color = color.new(hma_up_color, 30), size = size.tiny)
+
+plotshape(series = enable_hma and ta.change(hma_change < 0) and hma_change < 0 ? hma_trail : na, title = 'HMA Trend Down', style = shape.triangledown, location = location.absolute, color = color.new(hma_down_color, 30), size = size.tiny)
+
+// }
